@@ -37,8 +37,12 @@ AXIS USAGE
 '''
 
 def print_image(img, colormap=None):
+    '''
+    Print the given image with a specific colormap
+    '''
     plt.imshow(cv2.cvtColor(img, colormap))
     plt.show()
+    
 
 def compute_background_attributes(img):
     '''
@@ -59,17 +63,27 @@ def compute_mahalanobis_distance(img, mu, sigma_inv):
     return np.sqrt(np.sum((diff @ sigma_inv) * diff, axis=1)) # Compute sum of each pixel
 
 
-def segment_image(img, distances, threshold):
+def segment_image(img, distances, threshold, kernel_size=3, iterations=5):
+    '''
+    Segment the given image and dilate the map
+    '''
     binary_mask = np.where(distances < threshold, 0, 255).astype(np.uint8) # Create a binary mask for identify only object differently from bg
-    return binary_mask.reshape(img.shape[0:2])
+    binary_mask = binary_mask.reshape(img.shape[0:2])
+    img_dil = cv2.dilate(binary_mask, np.ones((kernel_size, kernel_size), np.uint8), iterations=iterations) # Dilate the image to make image most likely uniform
+    return img_dil
 
 
-def detect_blobs(img, kernel_size, iterations): 
-    img_dil = cv2.dilate(img, np.ones((kernel_size, kernel_size), np.uint8), iterations=iterations) # Dilate the image to make image most likely uniform
-    return cv2.connectedComponentsWithStats(img_dil, None, 8, cv2.CV_32S)
+def detect_blobs(img, connectivity=8): 
+    '''
+    Return the blobs with stats of the given segmented image
+    '''
+    return cv2.connectedComponentsWithStats(img, None, connectivity, cv2.CV_32S)
 
 
 def show_bounding_boxes(img, blobs):
+    '''
+    Print the bounding box of the blobs in image
+    '''
     img_blob_boxes = img.copy()
     
     for blob in blobs:
@@ -83,6 +97,9 @@ def show_bounding_boxes(img, blobs):
 
 
 def extract_keypoints_and_descriptors(img, max_key, draw_key_points=False): 
+    '''
+    Return the most max_key significant keypoints and descriptors of a given image  
+    '''
     sift = cv2.SIFT_create()
     keypoints, descriptors = sift.detectAndCompute(img, None)
     keypoints = sorted(keypoints, key=lambda x: x.response, reverse=True) # Only consider the most significant descpritor
@@ -98,8 +115,10 @@ def extract_keypoints_and_descriptors(img, max_key, draw_key_points=False):
 
 
 # Creazione del mazzo
-def create_deck(input_path, output_path, num_cards):
-
+def create_deck(input_path, output_path, num_cards, k_size, iter):
+    '''
+    Create the deck in the specified output_path
+    '''
     image_files = [f for f in os.listdir("deck")]
     actual_cards_number = len(image_files)
 
@@ -118,8 +137,8 @@ def create_deck(input_path, output_path, num_cards):
         for i in range(1, num_cards + 1):
             img = cv2.imread(f"{input_path}{i}.png")
             distances = compute_mahalanobis_distance(img, mu, sigma_inv)
-            segmented = segment_image(img, distances, threshold)
-            _, _, stats, _ = detect_blobs(segmented, 3, 5)
+            segmented = segment_image(img, distances, threshold, k_size, iter)
+            _, _, stats, _ = detect_blobs(segmented)
 
             for label in range(1, stats.shape[0]):
                 x, y, w, h, _ = stats[label]
@@ -131,6 +150,9 @@ def create_deck(input_path, output_path, num_cards):
 
 
 def compute_deck_features(deck_path, max_key):
+    '''
+    Return the keypoints and descriptor for each card in the deck directory
+    '''
     deck = []
     for img_file in os.listdir(deck_path):
         img = cv2.imread(os.path.join(deck_path, img_file))
@@ -141,21 +163,30 @@ def compute_deck_features(deck_path, max_key):
 
 ########################################
 img_bg = cv2.imread("images/Background.png")
-img_try = cv2.imread("images/Card2_over2.jpg")
+img_try = cv2.imread("images/Card3_over1.jpg")
 
-bg_attr = compute_background_attributes(img_bg)
+mu_bg, sigma_inv_bg = compute_background_attributes(img_bg)
 
-d_M = compute_mahalanobis_distance(img_try, bg_attr[0], bg_attr[1])
+d_M = compute_mahalanobis_distance(img_try, mu_bg, sigma_inv_bg)
 
 segment_threshold = 50
+kernel_segmentation = 3
+iterations_segmentation = 5
 
-img_seg = segment_image(img_try, d_M, segment_threshold)
-
+img_seg = segment_image(img_try, d_M, segment_threshold, kernel_segmentation, iterations_segmentation)
 print_image(img_seg, cv2.COLOR_BGR2RGB)
 
-numlabels, img_blob, stats, centroids = detect_blobs(img_seg, 3, 5)
+numlabels, img_blob, stats, centroids = detect_blobs(img_seg)
 
-blobs = [Blob(x, y, w, h, img_try[y:y + h, x:x + w]) for x, y, w, h, _ in stats[1:]]
+# Lower bound for pixel card blob
+min_width = 50
+min_height = 80
+
+blobs = [
+    Blob(x, y, w, h, img_try[y:y + h, x:x + w]) 
+    for x, y, w, h, _ in stats[1:] 
+    if w >= min_width and h >= min_height
+]
 
 show_bounding_boxes(img_try, blobs)
 
@@ -164,7 +195,7 @@ images_path = "images"
 deck_path = "deck"
 cards_number = 38
 
-create_deck(images_path + "/Card", deck_path + "/Card", cards_number)
+create_deck(images_path + "/Card", deck_path + "/Card", cards_number, kernel_segmentation, iterations_segmentation)
 
 # Compute deck features (images, keypoints, descriptors) for each cards in deck
 max_key = 500
@@ -185,7 +216,7 @@ all_descriptors = np.vstack([card.descriptors for card in deck if card.descripto
 index_matches = []
 
 for blob in blobs:
-    keypoints, descriptors = extract_keypoints_and_descriptors(blob.image, max_key, False)
+    keypoints, descriptors = extract_keypoints_and_descriptors(blob.image, max_key, True)
     matches = flann.knnMatch(descriptors, all_descriptors.reshape(-1,128).astype(np.float32), k=2)
 
     good_matches = []
