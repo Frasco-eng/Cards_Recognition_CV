@@ -33,13 +33,14 @@ AXIS USAGE
     axis=1: L'operazione viene eseguita lungo le righe (o il secondo asse).
     axis=2: L'operazione viene eseguita lungo il terzo asse, tipico di immagini RGB o array multidimensionali.
     axis=-1: Si riferisce all'ultimo asse, indipendentemente dalla dimensionalità.
-
 '''
 
-def print_image(img, colormap=None):
+def print_image(img, colormap=cv2.COLOR_BGR2RGB, title=None):
     '''
     Print the given image with a specific colormap
     '''
+    plt.title(title)
+    plt.axis("off")
     plt.imshow(cv2.cvtColor(img, colormap))
     plt.show()
     
@@ -100,7 +101,7 @@ def extract_keypoints_and_descriptors(img, max_key, draw_key_points=False):
     '''
     Return the most max_key significant keypoints and descriptors of a given image  
     '''
-    sift = cv2.SIFT_create()
+    sift = cv2.SIFT_create(edgeThreshold=5)
     keypoints, descriptors = sift.detectAndCompute(img, None)
     keypoints = sorted(keypoints, key=lambda x: x.response, reverse=True) # Only consider the most significant descpritor
     max_keypoints = max_key
@@ -132,8 +133,8 @@ def create_deck(input_path, output_path, num_cards, k_size, iter):
         img_bg = cv2.imread("images/Background.png")
         mu, sigma_inv = compute_background_attributes(img_bg)
         threshold = 50
-        count = 1
 
+        count = 1
         for i in range(1, num_cards + 1):
             img = cv2.imread(f"{input_path}{i}.png")
             distances = compute_mahalanobis_distance(img, mu, sigma_inv)
@@ -145,6 +146,8 @@ def create_deck(input_path, output_path, num_cards, k_size, iter):
                 cropped_img = img[y:y + h, x:x + w]
                 cv2.imwrite(f"{output_path}{count}.png", cropped_img)
                 count += 1
+        
+        print("Deck created!")
         
         return False
 
@@ -162,23 +165,30 @@ def compute_deck_features(deck_path, max_key):
 
 
 ########################################
+segment_threshold = 50
+kernel_segmentation = 3
+iterations_segmentation = 5
+
+# Deck creation
+images_path = "images"
+deck_path = "deck"
+cards_number = 38
+
+create_deck(images_path + "/Card", deck_path + "/Card", cards_number, kernel_segmentation, iterations_segmentation)
+
 img_bg = cv2.imread("images/Background.png")
-img_try = cv2.imread("images/Card3_over1.jpg")
+img_try = cv2.imread("images/Card2dist.jpeg")
 
 mu_bg, sigma_inv_bg = compute_background_attributes(img_bg)
 
 d_M = compute_mahalanobis_distance(img_try, mu_bg, sigma_inv_bg)
 
-segment_threshold = 50
-kernel_segmentation = 3
-iterations_segmentation = 5
-
 img_seg = segment_image(img_try, d_M, segment_threshold, kernel_segmentation, iterations_segmentation)
-print_image(img_seg, cv2.COLOR_BGR2RGB)
+# print_image(img_seg, cv2.COLOR_BGR2RGB)
 
 numlabels, img_blob, stats, centroids = detect_blobs(img_seg)
 
-# Lower bound for pixel card blob
+# Lower bound for pixel card blob for the current camera used!!!!!!!!!!!!!!!!!!!!!!
 min_width = 50
 min_height = 80
 
@@ -190,12 +200,7 @@ blobs = [
 
 show_bounding_boxes(img_try, blobs)
 
-# Deck creation
-images_path = "images"
-deck_path = "deck"
-cards_number = 38
 
-create_deck(images_path + "/Card", deck_path + "/Card", cards_number, kernel_segmentation, iterations_segmentation)
 
 # Compute deck features (images, keypoints, descriptors) for each cards in deck
 max_key = 500
@@ -212,29 +217,37 @@ search_params = dict(checks = 50)
 # FLANN Creation
 flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-all_descriptors = np.vstack([card.descriptors for card in deck if card.descriptors is not None])
+all_descriptors = np.vstack([deck[i].descriptors for i in range(len(deck)) if deck[i].descriptors is not None])
 index_matches = []
 
 for blob in blobs:
     keypoints, descriptors = extract_keypoints_and_descriptors(blob.image, max_key, True)
-    matches = flann.knnMatch(descriptors, all_descriptors.reshape(-1,128).astype(np.float32), k=2)
-
-    good_matches = []
+    matches = flann.knnMatch(descriptors, all_descriptors, k=2)
+    
+    good_matches = np.array([]).astype(np.int32)
     for m, n in matches:
         if m.distance < 0.8 * n.distance:
-            good_matches.append(m)
             index_matches.append(int(np.floor(m.trainIdx/max_key)))
+            good_matches = np.append(good_matches, m)
 
-print(index_matches)
+    good_keypoints = [keypoints[m.queryIdx] for m in good_matches]
 
-index_count = np.zeros((len(deck), 1))
+    print_image(cv2.drawKeypoints(blob.image, good_keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS), title="Good Matches")
+
+
+index_count = np.hstack(np.zeros((len(deck), 1), np.int32))
+
+print(f"Index matches: {index_matches}")
 
 for i in range(len(index_matches)):
     index_count[index_matches[i]] += 1
 
-thresh_choice = 5
+print(f"Index count: {index_count}")
+
+# !!!!! dynamic computation of thresh_choice relative to max_key !!!!!
+thresh_choice = 10
 index_count[index_count < thresh_choice] = 0
 
 for i in range(len(index_count)):
     if index_count[i] > 0:
-        print_image(deck[i].image, cv2.COLOR_BGR2RGB)
+        print_image(deck[i].image, title=f"Guessed card Counted: {index_count[i]}")
