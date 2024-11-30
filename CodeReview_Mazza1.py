@@ -92,7 +92,7 @@ def show_bounding_boxes(img, blobs):
         endpoint = (startpoint[0] + blob.width, startpoint[1] + blob.height) 
         cv2.rectangle(img_blob_boxes, startpoint, endpoint, color=(255, 0, 0), thickness=4) 
 
-    print_image(img_blob_boxes, cv2.COLOR_BGR2RGB)
+    print_image(img_blob_boxes)
     
     return img_blob_boxes
 
@@ -110,7 +110,7 @@ def extract_keypoints_and_descriptors(img, max_key, draw_key_points=False):
 
     if draw_key_points:
         img_with_keypoints = cv2.drawKeypoints(img, keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        print_image(img_with_keypoints, cv2.COLOR_BGR2RGB)
+        print_image(img_with_keypoints)
 
     return keypoints, descriptors
 
@@ -148,7 +148,6 @@ def create_deck(input_path, output_path, num_cards, k_size, iter):
                 count += 1
         
         print("Deck created!")
-        
         return False
 
 
@@ -184,7 +183,7 @@ mu_bg, sigma_inv_bg = compute_background_attributes(img_bg)
 d_M = compute_mahalanobis_distance(img_try, mu_bg, sigma_inv_bg)
 
 img_seg = segment_image(img_try, d_M, segment_threshold, kernel_segmentation, iterations_segmentation)
-# print_image(img_seg, cv2.COLOR_BGR2RGB)
+# print_image(img_seg)
 
 numlabels, img_blob, stats, centroids = detect_blobs(img_seg)
 
