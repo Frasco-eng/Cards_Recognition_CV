@@ -231,10 +231,6 @@ search_params = dict(checks = 50)
 # FLANN Creation
 flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-all_descriptors = np.vstack([deck[i].descriptors for i in range(len(deck)) if deck[i].descriptors is not None])
-
-
-
 index_count = np.zeros(len(deck), dtype=int)
 
 bin_size = 15
@@ -272,16 +268,16 @@ for blob in blobs:
        
         for match in good_matches:
             
-        # Iterate through matches
+            # Iterate through matches
             kp_template = deck[i].keypoints[match.trainIdx]
             kp_target = keypoints[match.queryIdx]
 
             # Parameters
             #print(kp_template.angle, kp_target.angle)
-            angle = kp_template.angle - kp_target.angle # Relative rotation
+            angle = -kp_template.angle + kp_target.angle # Relative rotation
         
                 
-            scale = kp_target.size/kp_template.size   # Relative scale
+            scale = kp_template.size/ kp_target.size   # Relative scale
 
             # Compute translation with rotation
             tx = kp_target.pt[0] - scale * (kp_template.pt[0] * np.cos(np.radians(angle)) - kp_template.pt[1] * np.sin(np.radians(angle)))
