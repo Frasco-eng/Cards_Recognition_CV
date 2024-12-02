@@ -193,7 +193,7 @@ cards_number = 38
 #create_deck(images_path + "/Card", deck_path + "/Card", cards_number, kernel_segmentation, iterations_segmentation)
 
 img_bg = cv2.imread("images/Background.png")
-img_try = cv2.imread("images/Card1over.png")
+img_try = cv2.imread("images/Card2_rot45.jpg")
 
 mu_bg, sigma_inv_bg = compute_background_attributes(img_bg)
 
@@ -264,7 +264,7 @@ for blob in blobs:
             if m.distance < 0.8 * n.distance:
                 good_matches.append(m)
         
-        matched_keypoints = []
+        matched_keypoints = []        
        
         for match in good_matches:
             
@@ -274,7 +274,7 @@ for blob in blobs:
 
             # Parameters
             #print(kp_template.angle, kp_target.angle)
-            angle = -kp_template.angle + kp_target.angle # Relative rotation
+            angle = kp_template.angle - kp_target.angle # Relative rotation
         
                 
             scale = kp_template.size/ kp_target.size   # Relative scale
@@ -313,8 +313,6 @@ for blob in blobs:
                 #matched_keypoints.append((match, (scale_bin, angle_bin)))
                 
             
-        
-        
         filtered_keypoints = []
         vote_threshold = 2  # Example threshold
         
@@ -323,8 +321,6 @@ for blob in blobs:
         # Retain only keypoints contributing to significant bins
         for match, bins in matched_keypoints:
             if tuple(bins) in [tuple(bin_indices) for bin_indices in significant_bins]:
-                
-                
                 filtered_keypoints.append(match)
                 
         #query_keypoints = [keypoints[match.queryIdx] for match in filtered_keypoints]
